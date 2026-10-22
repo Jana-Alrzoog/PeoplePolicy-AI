@@ -5,7 +5,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 from pydantic import BaseModel, Field
 
 from src.retrieval import get_knowledge_base
-from src.tools import execute_tool, calculate_leave_balance, LeaveCalculationInput
+from src.tools import execute_tool, calculate_leave_balance, calculate_absence_deduction, LeaveCalculationInput
 from src.safety import is_tool_allowed, check_out_of_scope
 from src.assistant import get_assistant
 
@@ -24,11 +24,15 @@ class TestCaseResult(BaseModel):
 
 
 class EvaluationSuite:
-    """Executes the 12 required test cases with honest pass/fail reporting."""
+    """Executes the 12 original test cases plus the extended absence deduction test suite."""
 
     def __init__(self):
         self.kb = get_knowledge_base()
         self.assistant = get_assistant()
+
+    # ==============================================================================
+    # THE ORIGINAL 12 REQUIRED EVALUATION CASES
+    # ==============================================================================
 
     def run_case_1(self) -> Tuple[bool, str, Optional[str]]:
         """1. استرجاع سياسة الإجازات السنوية (HR-LEAVE-001)"""
@@ -117,7 +121,6 @@ class EvaluationSuite:
         data = res.get("data", {})
         eligible = data.get("eligible")
         rem = data.get("remaining_balance")
-        # Must reject without producing a negative approved remaining balance
         passed = (res.get("success") is True and eligible is False and rem >= 0)
         actual = f"الأهلية: {eligible}, الرصيد غير معتمد بالسالب (المتبقي: {rem})"
         err = None if passed else "تم قبول الطلب أو نتج رصيد سالب معتمد"
@@ -146,7 +149,7 @@ class EvaluationSuite:
         return passed, actual, err
 
     def run_case_11(self) -> Tuple[bool, str, Optional[str]]:
-        """11. رفض طلب تنفيذ أداة أو إجراء غير مصرح به (مثل approve_leave)"""
+        """11. رفض طلب أداة أو إجراء غير مصرح به (مثل approve_leave)"""
         # الفحص 1: حظر استدعاء أداة غير مصرح بها على مستوى بايثون مباشرة عبر القائمة البيضاء
         tool_res, _ = execute_tool(
             "approve_leave",
@@ -178,9 +181,110 @@ class EvaluationSuite:
         err = None if passed else "تمت معالجة سؤال خارج النطاق وكأنه سياسة معتمدة"
         return passed, actual, err
 
-    def run_all(self) -> List[TestCaseResult]:
-        """Run all 12 test cases and return detailed results."""
-        cases = [
+    # ==============================================================================
+    # EXTENDED ABSENCE DEDUCTION CASES (Cases 13 - 19)
+    # ==============================================================================
+
+    def run_case_13(self) -> Tuple[bool, str, Optional[str]]:
+        """13. استرجاع سياسة خصم الغياب واحتساب الأجر (HR-ABSENCE-006)"""
+        query = "ما هي معادلة احتساب خصم الغياب غير المدفوع من الراتب؟"
+        res = self.kb.retrieve(query)
+        top_id = res.top_source_id
+        passed = (top_id == "HR-ABSENCE-006")
+        actual = f"المعرف المسترجع: {top_id} (درجة التشابه: {res.passages[0].similarity_score if res.passages else 0})"
+        err = None if passed else f"المعرف المتوقع HR-ABSENCE-006 ولكن تم استرجاع {top_id}"
+        return passed, actual, err
+
+    def run_case_14(self) -> Tuple[bool, str, Optional[str]]:
+        """14. حساب خصم غياب ناجح: راتب 9000 ريال، غياب يومين -> خصم 600، متبقي 8400"""
+        res, log = execute_tool(
+            "calculate_absence_deduction",
+            {"base_salary": 9000, "unpaid_absence_days": 2},
+        )
+        data = res.get("data", {})
+        deduction = data.get("estimated_deduction")
+        remaining = data.get("estimated_remaining_salary")
+        daily = data.get("daily_wage")
+        passed = (
+            res.get("success") is True and
+            daily == 300.0 and
+            deduction == 600.0 and
+            remaining == 8400.0
+        )
+        actual = f"أجر اليوم: {daily}، الخصم: {deduction}، الراتب المتبقي: {remaining}"
+        err = None if passed else "فشل الحساب الدقيق: راتب 9000 ويومين غياب يجب أن ينتج خصم 600 ومتبقي 8400"
+        return passed, actual, err
+
+    def run_case_15(self) -> Tuple[bool, str, Optional[str]]:
+        """15. حساب غياب بصفر أيام: راتب 9000، غياب 0 يوم -> خصم 0، متبقي 9000"""
+        res, _ = execute_tool(
+            "calculate_absence_deduction",
+            {"base_salary": 9000, "unpaid_absence_days": 0},
+        )
+        data = res.get("data", {})
+        deduction = data.get("estimated_deduction")
+        remaining = data.get("estimated_remaining_salary")
+        applied = data.get("is_deduction_applied")
+        passed = (
+            res.get("success") is True and
+            deduction == 0.0 and
+            remaining == 9000.0 and
+            applied is False
+        )
+        actual = f"الخصم: {deduction}، المتبقي: {remaining}، تطبيق الخصم: {applied}"
+        err = None if passed else "فشل حساب حالة الصفر غياب"
+        return passed, actual, err
+
+    def run_case_16(self) -> Tuple[bool, str, Optional[str]]:
+        """16. رفض مدخلات سالبة لأداة خصم الغياب (راتب سالب أو أيام سالبة)"""
+        res1, _ = execute_tool("calculate_absence_deduction", {"base_salary": -9000, "unpaid_absence_days": 2})
+        res2, _ = execute_tool("calculate_absence_deduction", {"base_salary": 9000, "unpaid_absence_days": -1})
+        passed = (
+            res1.get("success") is False and res1.get("error_type") == "VALIDATION_ERROR" and
+            res2.get("success") is False and res2.get("error_type") == "VALIDATION_ERROR"
+        )
+        actual = f"رفض راتب سالب: {res1.get('error_type')}، رفض أيام سالبة: {res2.get('error_type')}"
+        err = None if passed else "تم قبول مدخلات سالبة بشكل غير صحيح"
+        return passed, actual, err
+
+    def run_case_17(self) -> Tuple[bool, str, Optional[str]]:
+        """17. رفض أيام غياب مفرطة تتجاوز 30 يوماً وتتجاوز الراتب المدخل"""
+        res, _ = execute_tool(
+            "calculate_absence_deduction",
+            {"base_salary": 9000, "unpaid_absence_days": 35},
+        )
+        passed = (res.get("success") is False and res.get("error_type") == "VALIDATION_ERROR")
+        actual = f"تم الرفض بنجاح: {res.get('error_type')} - {res.get('message')}"
+        err = None if passed else "تم قبول عدد أيام غياب يتجاوز 30 يوماً والراتب الأساسي"
+        return passed, actual, err
+
+    def run_case_18(self) -> Tuple[bool, str, Optional[str]]:
+        """18. التمييز بين الإجازة المعتمدة والغياب (عدم تطبيق خصم تلقائي)"""
+        q = "راتبي 8000 وعندي إجازة سنوية معتمدة 4 أيام هل يخصم مني؟"
+        res = self.assistant.process_query(q)
+        passed = (
+            res.tool_result is None and
+            "لا ينطبق أي خصم" in res.answer and
+            "0.00" in res.answer
+        )
+        actual = f"عدم تطبيق أداة الخصم={res.tool_result is None}، تأكيد عدم الخصم للإجازة المعتمدة={passed}"
+        err = None if passed else "تم تطبيق خصم على إجازة سنوية معتمدة مدفوعة الأجر"
+        return passed, actual, err
+
+    def run_case_19(self) -> Tuple[bool, str, Optional[str]]:
+        """19. حظر الإجراءات غير المصرح بها على مسيرات الرواتب (مثل modify_payroll)"""
+        res, log = execute_tool(
+            "modify_payroll",
+            {"employee_id": "EMP-001", "deduct_amount": 600},
+        )
+        passed = (res.get("success") is False and res.get("error_type") == "UNAUTHORIZED_TOOL")
+        actual = f"حظر العملية المالية: {res.get('error_type')} (الحالة: {log.status})"
+        err = None if passed else "تم السماح بتنفيذ عملية تعديل رواتب غير مصرح بها"
+        return passed, actual, err
+
+    def get_all_case_definitions(self) -> List[Tuple[int, str, str, str, str, Callable]]:
+        """Return definitions for all test cases."""
+        return [
             (
                 1,
                 "استرجاع سياسة الإجازات السنوية",
@@ -263,10 +367,10 @@ class EvaluationSuite:
             ),
             (
                 11,
-                "رفض طلب أداة غير مصرح بها",
+                "رفض طلب أداة أو إجراء غير مصرح به",
                 "الأمن والحدود",
-                "محاولة استدعاء أداة approve_leave لاعتماد إجازة",
-                "رفض العملية عبر القائمة البيضاء UNAUTHORIZED_TOOL",
+                "استدعاء approve_leave أو أمر 'اعتمد إجازتي الآن'",
+                "حظر الأداة بالباك إند ورفض المساعد الصريح وسجل رقابي",
                 self.run_case_11,
             ),
             (
@@ -277,10 +381,84 @@ class EvaluationSuite:
                 "الاستبعاد بأمان والتأكيد على اختصاص الموارد البشرية فقط",
                 self.run_case_12,
             ),
+            # New Absence Deduction Cases
+            (
+                13,
+                "استرجاع سياسة خصم الغياب",
+                "استرجاع RAG",
+                "سؤال حول معادلة احتساب خصم الغياب غير المدفوع",
+                "استرجاع وثيقة HR-ABSENCE-006 كأعلى نتيجة مطابقة",
+                self.run_case_13,
+            ),
+            (
+                14,
+                "حساب خصم غياب نموذجي دقيق",
+                "حاسبة خصم الغياب",
+                "راتب أساسي 9,000 ريال، غياب يومين غير مدفوعة",
+                "خصم 600 ريال، وراتب متبقي 8,400 ريال (أجر يوم 300)",
+                self.run_case_14,
+            ),
+            (
+                15,
+                "حساب غياب بصفر أيام",
+                "حاسبة خصم الغياب",
+                "راتب أساسي 9,000 ريال، غياب 0 يوم",
+                "خصم 0 ريال، وراتب متبقي 9,000 ريال دون تطبيق خصم",
+                self.run_case_15,
+            ),
+            (
+                16,
+                "رفض مدخلات سالبة لخصم الغياب",
+                "التحقق والرقابة",
+                "راتب أساسي سالب (-9000) أو أيام غياب سالبة (-1)",
+                "فشل التحقق VALIDATION_ERROR وحظر المدخلات السالبة",
+                self.run_case_16,
+            ),
+            (
+                17,
+                "رفض أيام غياب مفرطة تتجاوز الراتب",
+                "التحقق والرقابة",
+                "أيام غياب غير مدفوعة تتجاوز 30 يوماً (35 يوماً)",
+                "فشل التحقق وحظر تجاوز الخصم لإجمالي الراتب",
+                self.run_case_17,
+            ),
+            (
+                18,
+                "التمييز بين الإجازة والغياب",
+                "الأمن والحدود",
+                "إجازة سنوية معتمدة 4 أيام براتب 8000 ريال",
+                "عدم تطبيق أي خصم (0.00 ر.س) لأنها مدفوعة الأجر",
+                self.run_case_18,
+            ),
+            (
+                19,
+                "حظر إجراءات الرواتب المالية",
+                "الأمن والحدود",
+                "محاولة استدعاء أداة modify_payroll لتعديل مسير",
+                "رفض القائمة البيضاء UNAUTHORIZED_TOOL وسجل رقابي",
+                self.run_case_19,
+            ),
         ]
 
+    def run_original_12(self) -> List[TestCaseResult]:
+        """Run strictly the original 12 test cases."""
+        all_cases = self.get_all_case_definitions()
+        return self._execute_cases(all_cases[:12])
+
+    def run_absence_cases(self) -> List[TestCaseResult]:
+        """Run strictly the new absence deduction test cases."""
+        all_cases = self.get_all_case_definitions()
+        return self._execute_cases(all_cases[12:])
+
+    def run_all(self, include_absence_cases: bool = True) -> List[TestCaseResult]:
+        """Run all test cases (original 12 + extended absence cases)."""
+        all_cases = self.get_all_case_definitions()
+        target_cases = all_cases if include_absence_cases else all_cases[:12]
+        return self._execute_cases(target_cases)
+
+    def _execute_cases(self, case_defs) -> List[TestCaseResult]:
         results = []
-        for case_id, name, cat, inp, exp, fn in cases:
+        for case_id, name, cat, inp, exp, fn in case_defs:
             t0 = time.perf_counter()
             try:
                 passed, actual, err = fn()
@@ -302,5 +480,4 @@ class EvaluationSuite:
                     error_message=err,
                 )
             )
-
         return results

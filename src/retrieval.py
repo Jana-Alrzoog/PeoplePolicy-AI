@@ -135,7 +135,7 @@ class PolicyKnowledgeBase:
                 normalized_text = normalize_arabic(safe_text)
 
                 # Append document header info to improve semantic matching
-                enriched_text = f"{policy_title} {section_title} {normalized_text}"
+                enriched_text = f"{policy_title} {policy_title} {section_title} {normalized_text}"
 
                 self.passages.append({
                     "source_id": source_id,

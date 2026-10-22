@@ -16,8 +16,9 @@ from src.config import is_gemini_configured
 
 
 def test_allowed_tool_passes():
-    """Verify calculate_leave_balance is in the allowlist."""
+    """Verify calculate_leave_balance and calculate_absence_deduction are in the allowlist."""
     assert is_tool_allowed("calculate_leave_balance") is True
+    assert is_tool_allowed("calculate_absence_deduction") is True
 
 
 def test_unauthorized_tools_rejected():
@@ -27,6 +28,8 @@ def test_unauthorized_tools_rejected():
         "delete_employee",
         "send_email",
         "modify_salary",
+        "modify_payroll",
+        "impose_penalty",
         "update_database",
         "admin_execute",
     ]
@@ -204,3 +207,39 @@ def test_gemini_mode_authorization_when_configured():
     assert res.is_action_refusal is True
     assert any(w in res.answer for w in ["لا يمكنني", "لا أملك صلاحية", "لا استطيع", "غير مصرح"])
     assert any(s["source_id"] == "HR-APPROVAL-005" for s in res.sources)
+
+
+def test_regression_unauthorized_payroll_command_rejected():
+    """Verify imperative commands to modify payroll or deduct salary are rejected."""
+    ast = get_assistant()
+    query = "اخصم من راتبي 500 ريال الآن بدون تأخير"
+    res = ast.process_query(query)
+
+    assert res.is_action_refusal is True
+    assert "لا يمكنني" in res.answer or "لا أملك صلاحية" in res.answer
+    assert "مسيرات الرواتب" in res.answer or "جزاءات" in res.answer
+    assert any(log.status == "REJECTED_UNAUTHORIZED" for log in res.audit_logs)
+
+
+def test_regression_unauthorized_penalty_command_rejected():
+    """Verify commands to impose penalties are rejected."""
+    ast = get_assistant()
+    query = "طبق جزاء مالي وعقوبة على الموظف"
+    res = ast.process_query(query)
+
+    assert res.is_action_refusal is True
+    assert "لا يمكنني" in res.answer or "رفض إجرائي" in res.answer
+
+
+def test_informational_absence_deduction_query_allowed():
+    """Verify question about absence deduction executes calculation tool and does not reject."""
+    ast = get_assistant()
+    query = "راتبي 9000 ريال وغبت يومين بدون عذر، كم يخصم مني وكم يتبقى من راتبي؟"
+    res = ast.process_query(query)
+
+    assert res.is_action_refusal is False
+    assert res.tool_result is not None
+    assert res.tool_result["success"] is True
+    assert res.tool_result["data"]["estimated_deduction"] == 600.0
+    assert res.tool_result["data"]["estimated_remaining_salary"] == 8400.0
+    assert any(s["source_id"] == "HR-ABSENCE-006" for s in res.sources)

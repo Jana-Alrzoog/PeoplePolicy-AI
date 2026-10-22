@@ -69,9 +69,56 @@ def test_eval_case_12_handle_out_of_scope_query(suite):
     assert passed is True, err
 
 
-def test_eval_suite_run_all_completes(suite):
-    """Verify evaluation suite runs completely and reports all 12 cases."""
-    results = suite.run_all()
+# ==============================================================================
+# EXTENDED EVALUATION CASES (Absence Deduction Cases 13 - 19)
+# ==============================================================================
+
+def test_eval_case_13_absence_deduction_retrieval(suite):
+    passed, actual, err = suite.run_case_13()
+    assert passed is True, err
+
+
+def test_eval_case_14_absence_deduction_standard(suite):
+    passed, actual, err = suite.run_case_14()
+    assert passed is True, err
+
+
+def test_eval_case_15_absence_deduction_zero_days(suite):
+    passed, actual, err = suite.run_case_15()
+    assert passed is True, err
+
+
+def test_eval_case_16_absence_deduction_negative_inputs(suite):
+    passed, actual, err = suite.run_case_16()
+    assert passed is True, err
+
+
+def test_eval_case_17_absence_deduction_excessive_days(suite):
+    passed, actual, err = suite.run_case_17()
+    assert passed is True, err
+
+
+def test_eval_case_18_distinguish_paid_leave_from_unpaid(suite):
+    passed, actual, err = suite.run_case_18()
+    assert passed is True, err
+
+
+def test_eval_case_19_block_unauthorized_payroll_action(suite):
+    passed, actual, err = suite.run_case_19()
+    assert passed is True, err
+
+
+def test_eval_suite_original_12_completes(suite):
+    """Verify original 12 evaluation test cases complete and pass 100%."""
+    results = suite.run_original_12()
     assert len(results) == 12
     passed_count = sum(1 for r in results if r.passed)
     assert passed_count == 12
+
+
+def test_eval_suite_run_all_completes(suite):
+    """Verify full evaluation suite (original 12 + extended 7) reports 19 cases."""
+    results = suite.run_all()
+    assert len(results) == 19
+    passed_count = sum(1 for r in results if r.passed)
+    assert passed_count == 19

@@ -11,8 +11,8 @@ def kb():
 
 
 def test_knowledge_base_loaded_all_policies(kb):
-    """Verify that all 5 fictional policies are loaded and indexed."""
-    assert len(kb.passages) >= 5
+    """Verify that all 6 fictional policies are loaded and indexed."""
+    assert len(kb.passages) >= 6
     source_ids = {p["source_id"] for p in kb.passages}
     expected_ids = {
         "HR-LEAVE-001",
@@ -20,6 +20,7 @@ def test_knowledge_base_loaded_all_policies(kb):
         "HR-ATTEND-003",
         "HR-REMOTE-004",
         "HR-APPROVAL-005",
+        "HR-ABSENCE-006",
     }
     assert expected_ids.issubset(source_ids)
 
@@ -77,6 +78,14 @@ def test_retrieve_leave_approval_workflow(kb):
     res = kb.retrieve(query)
     assert res.has_sufficient_evidence is True
     assert res.top_source_id == "HR-APPROVAL-005"
+
+
+def test_retrieve_absence_deduction_policy(kb):
+    """Verify query about absence deduction formula retrieves HR-ABSENCE-006."""
+    query = "ما هي معادلة احتساب خصم الغياب غير المدفوع من الراتب؟"
+    res = kb.retrieve(query)
+    assert res.has_sufficient_evidence is True
+    assert res.top_source_id == "HR-ABSENCE-006"
 
 
 def test_insufficient_evidence_for_gibberish(kb):

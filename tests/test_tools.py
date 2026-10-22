@@ -115,3 +115,112 @@ def test_execute_tool_validation_error_dispatch():
     assert res["success"] is False
     assert res["error_type"] == "VALIDATION_ERROR"
     assert log.status == "VALIDATION_ERROR"
+
+
+# ==============================================================================
+# ABSENCE DEDUCTION TOOL TESTS
+# ==============================================================================
+
+def test_calculate_absence_deduction_standard():
+    """Verify standard valid calculation: 9000 SAR salary, 2 days absence -> 600 deduction, 8400 remaining."""
+    from src.tools import calculate_absence_deduction
+    result = calculate_absence_deduction(base_salary=9000.0, unpaid_absence_days=2.0)
+    assert result.base_salary == 9000.0
+    assert result.unpaid_absence_days == 2.0
+    assert result.daily_wage == 300.0
+    assert result.estimated_deduction == 600.0
+    assert result.estimated_remaining_salary == 8400.0
+    assert result.is_deduction_applied is True
+    assert "خصم" in result.explanation
+
+
+def test_calculate_absence_deduction_zero_days():
+    """Verify 0 absence days results in 0 deduction and full remaining salary."""
+    from src.tools import calculate_absence_deduction
+    result = calculate_absence_deduction(base_salary=9000.0, unpaid_absence_days=0.0)
+    assert result.estimated_deduction == 0.0
+    assert result.estimated_remaining_salary == 9000.0
+    assert result.is_deduction_applied is False
+
+
+def test_calculate_absence_deduction_rejects_negative_salary():
+    """Verify negative salary is rejected."""
+    from src.tools import AbsenceDeductionInput
+    with pytest.raises(ValidationError):
+        AbsenceDeductionInput(base_salary=-5000.0, unpaid_absence_days=2.0)
+
+
+def test_calculate_absence_deduction_rejects_zero_salary():
+    """Verify zero salary is rejected (must be > 0)."""
+    from src.tools import AbsenceDeductionInput
+    with pytest.raises(ValidationError):
+        AbsenceDeductionInput(base_salary=0.0, unpaid_absence_days=2.0)
+
+
+def test_calculate_absence_deduction_rejects_negative_days():
+    """Verify negative absence days are rejected."""
+    from src.tools import AbsenceDeductionInput
+    with pytest.raises(ValidationError):
+        AbsenceDeductionInput(base_salary=8000.0, unpaid_absence_days=-2.0)
+
+
+def test_calculate_absence_deduction_rejects_excessive_days():
+    """Verify absence days exceeding 30 (deduction exceeding salary) are strictly rejected."""
+    from src.tools import AbsenceDeductionInput
+    with pytest.raises(ValidationError):
+        AbsenceDeductionInput(base_salary=9000.0, unpaid_absence_days=31.0)
+
+
+def test_calculate_absence_deduction_rejects_booleans():
+    """Verify booleans are strictly rejected."""
+    from src.tools import AbsenceDeductionInput
+    with pytest.raises(ValidationError):
+        AbsenceDeductionInput(base_salary=True, unpaid_absence_days=2.0)
+    with pytest.raises(ValidationError):
+        AbsenceDeductionInput(base_salary=9000.0, unpaid_absence_days=False)
+
+
+def test_calculate_absence_deduction_rejects_strings():
+    """Verify strings are strictly rejected."""
+    from src.tools import AbsenceDeductionInput
+    with pytest.raises(ValidationError):
+        AbsenceDeductionInput(base_salary="9000", unpaid_absence_days=2.0)
+
+
+def test_calculate_absence_deduction_rejects_nan_and_inf():
+    """Verify NaN and Inf are rejected."""
+    from src.tools import AbsenceDeductionInput
+    with pytest.raises(ValidationError):
+        AbsenceDeductionInput(base_salary=float("nan"), unpaid_absence_days=2.0)
+    with pytest.raises(ValidationError):
+        AbsenceDeductionInput(base_salary=9000.0, unpaid_absence_days=float("inf"))
+
+
+def test_calculate_absence_deduction_rejects_extra_fields():
+    """Verify unexpected extra fields are forbidden."""
+    from src.tools import AbsenceDeductionInput
+    with pytest.raises(ValidationError):
+        AbsenceDeductionInput(base_salary=9000.0, unpaid_absence_days=2.0, unauthorized_field="bad")
+
+
+def test_execute_tool_absence_deduction_success():
+    """Verify execute_tool correctly executes calculate_absence_deduction."""
+    res, log = execute_tool(
+        "calculate_absence_deduction",
+        {"base_salary": 9000, "unpaid_absence_days": 2},
+    )
+    assert res["success"] is True
+    assert res["data"]["estimated_deduction"] == 600.0
+    assert res["data"]["estimated_remaining_salary"] == 8400.0
+    assert log.status == "SUCCESS"
+
+
+def test_execute_tool_absence_deduction_validation_error():
+    """Verify execute_tool captures validation errors for absence deduction."""
+    res, log = execute_tool(
+        "calculate_absence_deduction",
+        {"base_salary": -9000, "unpaid_absence_days": 2},
+    )
+    assert res["success"] is False
+    assert res["error_type"] == "VALIDATION_ERROR"
+    assert log.status == "VALIDATION_ERROR"

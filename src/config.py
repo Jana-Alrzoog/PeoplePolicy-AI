@@ -42,6 +42,11 @@ POLICY_CATALOG = {
         "file": "leave_approval.md",
         "description": "دورة اعتماد الإجازات والحدود الصارمة للمساعد الذكي.",
     },
+    "HR-ABSENCE-006": {
+        "title": "سياسة خصم الغياب واحتساب الأجر",
+        "file": "absence_deduction.md",
+        "description": "معادلة احتساب خصم الغياب غير المدفوع، والتمييز بين الإجازات المعتمدة والغياب، وضوابط الرواتب.",
+    },
 }
 
 # RAG Engine settings
@@ -51,7 +56,7 @@ RELEVANCE_THRESHOLD = float(os.getenv("RAG_SIMILARITY_THRESHOLD", "0.12"))
 
 # Tool Execution & Security Limits
 MAX_TOOL_CALLS = int(os.getenv("MAX_TOOL_CALLS", "3"))
-ALLOWED_TOOLS = frozenset(["calculate_leave_balance"])
+ALLOWED_TOOLS = frozenset(["calculate_leave_balance", "calculate_absence_deduction"])
 
 # Gemini API settings (optional)
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
