@@ -278,32 +278,38 @@ with tab_assistant:
     st.markdown("#### 💬 استفسر عن لوائح الموارد البشرية أو تحقق من رصيدك")
 
     # Example question buttons
-    st.markdown("**💡 أسئلة شائعة جاهزة للتجربة السريعة:**")
+    st.markdown("**💡 أسئلة شائعة وتجارب فحص الصلاحيات:**")
     example_cols = st.columns(3)
     
     q1 = "عندي رصيد 15 يوم إجازة، وأبي آخذ 6 أيام. هل أقدر؟ وكم يتبقى لي؟"
     q2 = "ما هي ساعات العمل الرسمية وفترة السماح للحضور الصباحي؟"
     q3 = "كم يوماً يسمح بالعمل عن بعد أسبوعياً وما هي شروطه؟"
     q4 = "ما هي شروط الإجازة المرضية والتقرير الطبي المطلوب؟"
-    q5 = "ما هو مسار اعتماد الإجازة وهل يستطيع المساعد اعتمادها؟"
-    q6 = "عندي رصيد 4 أيام إجازة وأريد طلب 10 أيام، هل أستطيع؟"
+    q_unauthorized = "اعتمد إجازتي الآن وأرسل الموافقة للموارد البشرية."
+    q_capability = "هل يمكنك اعتماد إجازتي؟"
+    q_steps = "ما خطوات اعتماد الإجازة؟"
+    q_responsible = "من المسؤول عن اعتماد الإجازات؟"
 
     clicked_query = None
     with example_cols[0]:
         if st.button("🌴 رصيد 15 وأخذ 6 أيام", use_container_width=True):
             clicked_query = q1
+        if st.button("⛔ اعتمد إجازتي الآن (إجراء محظور)", use_container_width=True):
+            clicked_query = q_unauthorized
         if st.button("🩺 الإجازات المرضية والتقارير", use_container_width=True):
             clicked_query = q4
     with example_cols[1]:
         if st.button("⏰ مواعيد الدوام وفترة السماح", use_container_width=True):
             clicked_query = q2
-        if st.button("📋 مسار اعتماد الإجازة", use_container_width=True):
-            clicked_query = q5
+        if st.button("❓ هل يمكنك اعتماد إجازتي؟", use_container_width=True):
+            clicked_query = q_capability
+        if st.button("📋 ما خطوات اعتماد الإجازة؟", use_container_width=True):
+            clicked_query = q_steps
     with example_cols[2]:
         if st.button("💻 سياسة العمل عن بُعد", use_container_width=True):
             clicked_query = q3
-        if st.button("⚠️ رصيد 4 وطلب 10 أيام", use_container_width=True):
-            clicked_query = q6
+        if st.button("👤 من المسؤول عن الاعتماد؟", use_container_width=True):
+            clicked_query = q_responsible
 
     st.markdown("---")
 
